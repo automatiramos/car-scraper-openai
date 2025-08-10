@@ -301,13 +301,74 @@ def extraer_datos_coche_de_analisis(analisis_texto: str) -> List[Dict]:
     
     return coches_data
 
-def filtrar_coches_nuevos(lista_coches: List[Dict]) -> List[Dict]:
+def filtrar_coches_nuevos(lista_coches: List[Dict], analisis_historico: Dict) -> List[Dict]:
     """
-    Filtra solo los coches con estado_actualizacion: 'nuevo'.
+    Filtra solo los coches que realmente necesitan análisis:
+    1. Coches con estado_actualizacion: 'nuevo'
+    2. Coches que NO están en el análisis histórico
+    3. Coches 'actualizado' con cambios en datos clave (precio, modelo)
     """
-    coches_nuevos = [coche for coche in lista_coches if coche.get("estado_actualizacion") == "nuevo"]
-    print(f"🆕 Encontrados {len(coches_nuevos)} coches nuevos para analizar")
-    return coches_nuevos
+    coches_ya_analizados = analisis_historico.get("coches_analizados", {})
+    urls_analizadas = set(coches_ya_analizados.keys())
+    
+    coches_para_analizar = []
+    
+    for coche in lista_coches:
+        url_coche = coche.get("url", "")
+        estado = coche.get("estado_actualizacion", "")
+        
+        if estado == "nuevo":
+            if url_coche not in urls_analizadas:
+                coches_para_analizar.append(coche)
+            else:
+                print(f"⚠️ Coche nuevo ya analizado anteriormente: {coche.get('modelo', 'Sin modelo')}")
+        
+        elif estado == "actualizado" and url_coche in urls_analizadas:
+            # Verificar si cambió precio o modelo (datos clave para rentabilidad)
+            coche_previo = coches_ya_analizados[url_coche]
+            precio_actual = coche.get("precio", "")
+            modelo_actual = coche.get("modelo", "")
+            
+            # Extraer números de precio para comparación
+            precio_num_actual = re.search(r'(\d+)', precio_actual)
+            precio_num_actual = int(precio_num_actual.group(1)) if precio_num_actual else 0
+            
+            precio_previo = coche_previo.get("renting", 0)
+            modelo_previo = coche_previo.get("modelo", "")
+            
+            if precio_num_actual != precio_previo or modelo_actual != modelo_previo:
+                coches_para_analizar.append(coche)
+                print(f"🔄 Coche actualizado necesita re-análisis: {modelo_actual}")
+    
+    print(f"🆕 Coches nuevos para analizar: {len(coches_para_analizar)}")
+    print(f"🚫 Coches ya analizados (evitados): {len([c for c in lista_coches if c.get('estado_actualizacion') == 'nuevo' and c.get('url') in urls_analizadas])}")
+    
+    return coches_para_analizar
+
+def limpiar_coches_eliminados(analisis_historico: Dict, lista_coches_actual: List[Dict]) -> Dict:
+    """
+    Elimina del histórico los coches que ya no están disponibles en el listado actual.
+    """
+    urls_actuales = {coche.get("url") for coche in lista_coches_actual if coche.get("url")}
+    coches_analizados = analisis_historico.get("coches_analizados", {})
+    
+    # Filtrar solo los coches que siguen disponibles
+    coches_filtrados = {
+        url: datos for url, datos in coches_analizados.items() 
+        if url in urls_actuales
+    }
+    
+    eliminados = len(coches_analizados) - len(coches_filtrados)
+    if eliminados > 0:
+        print(f"🗑️ Eliminados {eliminados} coches del histórico (ya no disponibles)")
+        analisis_historico["coches_analizados"] = coches_filtrados
+        
+        # Actualizar TOP 3 si es necesario
+        todos_disponibles = list(coches_filtrados.values())
+        todos_disponibles.sort(key=lambda x: x.get("beneficio", 0), reverse=True)
+        analisis_historico["top_3_actual"] = todos_disponibles[:3]
+    
+    return analisis_historico
 
 def combinar_con_analisis_previo(nuevos_resultados: str, analisis_historico: Dict, todos_los_coches: List[Dict]) -> str:
     """
@@ -429,6 +490,30 @@ def cargar_coches(path: str):
                     continue
                 yield json.loads(line)
 
+def verificar_estado_analisis(lista_coches: List[Dict], analisis_historico: Dict):
+    """
+    Muestra un resumen detallado del estado del análisis.
+    """
+    coches_analizados = analisis_historico.get("coches_analizados", {})
+    urls_analizadas = set(coches_analizados.keys())
+    
+    estados = {}
+    for coche in lista_coches:
+        estado = coche.get("estado_actualizacion", "desconocido")
+        url = coche.get("url", "")
+        
+        if estado not in estados:
+            estados[estado] = {"total": 0, "ya_analizados": 0}
+        
+        estados[estado]["total"] += 1
+        if url in urls_analizadas:
+            estados[estado]["ya_analizados"] += 1
+    
+    print("\n🔍 Estado del Análisis:")
+    for estado, datos in estados.items():
+        pendientes = datos["total"] - datos["ya_analizados"]
+        print(f"   {estado}: {datos['total']} total, {datos['ya_analizados']} analizados, {pendientes} pendientes")
+
 # 6) ------------- Script principal con análisis incremental -----------------------
 if __name__ == "__main__":
     coches_lista = list(cargar_coches(FICHERO_ENTRADA))
@@ -443,8 +528,14 @@ if __name__ == "__main__":
     analisis_historico = cargar_analisis_historico()
     print(f"🗃️ Coches ya analizados: {len(analisis_historico.get('coches_analizados', {}))}")
     
-    # Filtrar solo coches nuevos
-    coches_nuevos = filtrar_coches_nuevos(coches_lista)
+    # Limpiar coches que ya no están disponibles
+    analisis_historico = limpiar_coches_eliminados(analisis_historico, coches_lista)
+    
+    # Mostrar estado detallado del análisis
+    verificar_estado_analisis(coches_lista, analisis_historico)
+    
+    # Filtrar solo coches nuevos que no estén ya analizados
+    coches_nuevos = filtrar_coches_nuevos(coches_lista, analisis_historico)
     
     if not coches_nuevos:
         print("✅ No hay coches nuevos para analizar.")
@@ -523,12 +614,19 @@ if __name__ == "__main__":
             elif "RECOMENDACIÓN FINAL:" in linea:
                 break
         
-        # Mostrar estadísticas
+        # Mostrar estadísticas detalladas
         total_analizados = len(analisis_historico.get("coches_analizados", {}))
-        print(f"\n📊 Estadísticas:")
+        coches_sin_cambios = len([c for c in coches_lista if c.get("estado_actualizacion") == "sin_cambios"])
+        coches_evitados = len(coches_lista) - len(coches_nuevos)
+        
+        print(f"\n📊 Estadísticas de Optimización:")
         print(f"   🆕 Coches nuevos analizados: {len(coches_nuevos)}")
         print(f"   📋 Total en base de datos: {total_analizados}")
-        print(f"   💸 Consultas OpenAI ahorradas: {len(coches_lista) - len(coches_nuevos)}")
+        print(f"   ✅ Coches sin cambios: {coches_sin_cambios}")
+        print(f"   💸 Consultas OpenAI ahorradas: {coches_evitados}")
+        if len(coches_lista) > 0:
+            porcentaje_ahorro = (coches_evitados / len(coches_lista)) * 100
+            print(f"   📈 Porcentaje de ahorro: {porcentaje_ahorro:.1f}%")
         
     except Exception as e:
         print(f"❌ Error guardando análisis: {e}")

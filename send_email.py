@@ -23,23 +23,33 @@ DESTINATARIO = os.getenv("EMAIL_DESTINATARIO", GMAIL_USER)  # destinatario por d
 
 def buscar_ultimo_analisis():
     """
-    Busca el archivo de análisis más reciente.
+    Busca el archivo de análisis (nombre fijo).
     """
-    # Buscar en el directorio de datos
+    # Buscar en el directorio de datos primero
     data_dir = os.path.join(os.getcwd(), "data")
-    patron = os.path.join(data_dir, "analisis_rentabilidad_*.txt")
-    archivos = glob.glob(patron)
+    archivo_data = os.path.join(data_dir, "analisis_rentabilidad.txt")
     
-    # Si no hay archivos en data/, buscar en el directorio actual
+    if os.path.exists(archivo_data):
+        return archivo_data
+    
+    # Si no existe en data/, buscar en el directorio actual
+    archivo_actual = "analisis_rentabilidad.txt"
+    if os.path.exists(archivo_actual):
+        return archivo_actual
+    
+    # Buscar archivos con fecha como fallback (compatibilidad hacia atrás)
+    patron_data = os.path.join(data_dir, "analisis_rentabilidad_*.txt")
+    archivos = glob.glob(patron_data)
+    
     if not archivos:
         archivos = glob.glob("analisis_rentabilidad_*.txt")
     
-    if not archivos:
-        return None
+    if archivos:
+        # Ordenar por fecha de modificación (más reciente primero)
+        archivos.sort(key=os.path.getmtime, reverse=True)
+        return archivos[0]
     
-    # Ordenar por fecha de modificación (más reciente primero)
-    archivos.sort(key=os.path.getmtime, reverse=True)
-    return archivos[0]
+    return None
 
 def leer_contenido_analisis(archivo):
     """
