@@ -61,9 +61,9 @@ jobs:
 
       - name: Send email with analysis
         env:
-          GMAIL_USER: ${{ secrets.GMAIL_USER }}
+          GMAIL_USER: automatiramos@gmail.com
           GMAIL_PASSWORD: ${{ secrets.GMAIL_PASSWORD }}
-          EMAIL_DESTINATARIO: ${{ secrets.EMAIL_DESTINATARIO }}
+          EMAIL_DESTINATARIO: josselynmishellramosacaro@gmail.com
         run: python send_email.py
 
       - name: Save car data as artifact

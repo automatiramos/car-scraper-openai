@@ -60,11 +60,12 @@ def crear_mensaje_email(contenido_analisis, archivo_analisis):
     msg = MIMEMultipart()
     msg['From'] = GMAIL_USER
     msg['To'] = DESTINATARIO
-    msg['Subject'] = f"🚗 Análisis Rentabilidad Coches Renting - {datetime.now().strftime('%d/%m/%Y')}"
-    
+    msg['Subject'] = f"🚗 Análisis Rentabilidad Coches Renting - {datetime.now().strftime('%d/%m/%Y-%H:%M')}"
+
     # Encabezado del email
     encabezado = f"""📧 ANÁLISIS DE RENTABILIDAD - COCHES RENTING
 ═══════════════════════════════════════════════════════════════════
+
 
 📅 Generado: {datetime.now().strftime('%d/%m/%Y a las %H:%M')}
 📍 Ubicación: Madrid
@@ -77,13 +78,10 @@ def crear_mensaje_email(contenido_analisis, archivo_analisis):
     # Pie del email
     pie = f"""
 
-═══════════════════════════════════════════════════════════════════
-
-📋 Archivo fuente: {os.path.basename(archivo_analisis)}
 🤖 Generado automáticamente por el Sistema de Análisis de Rentabilidad
 
 Saludos,
-Sistema de Análisis Automático
+Sistema de Análisis Automático de Automatiramos
 """
     
     # Combinar todo el contenido
