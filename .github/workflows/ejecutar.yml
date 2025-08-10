@@ -42,7 +42,7 @@ jobs:
 
       - name: Send email with results
         env:
-          GMAIL_USER: ${{ secrets.GMAIL_USER }}
+          GMAIL_USER: automatiramos@gmail.com
           GMAIL_PASSWORD: ${{ secrets.GMAIL_PASSWORD }}
-          EMAIL_DESTINATARIO: ${{ secrets.EMAIL_DESTINATARIO }}
+          EMAIL_DESTINATARIO: josselynmishellramosacaro@gmail.com
         run: python send_email.py
