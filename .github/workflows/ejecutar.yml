@@ -3,9 +3,9 @@ name: Car Scraper OpenAI
 on:
   # Ejecutarlo a mano desde la pestaña Actions
   workflow_dispatch:
-  # Programado: Ejecutar cada hora. Puedes cambiar la frecuencia según tus necesidades.
+  # Programado: Ejecutar cada 5 mins. Puedes cambiar la frecuencia según tus necesidades.
   schedule:
-    - cron: "0 * * * *"
+    - cron: "*/5 * * * *"
 
 jobs:
   run-scripts:
@@ -40,11 +40,9 @@ jobs:
           ARCHIVO_COCHES: coches.json
         run: python ask_openai_car_evaluation.py
 
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: car-scraper-openai-results
-          path: |
-            coches.json
-            coches_eliminados.json
-            cars/
+      - name: Send email with results
+        env:
+          GMAIL_USER: ${{ secrets.GMAIL_USER }}
+          GMAIL_PASSWORD: ${{ secrets.GMAIL_PASSWORD }}
+          EMAIL_DESTINATARIO: ${{ secrets.EMAIL_DESTINATARIO }}
+        run: python send_email.py

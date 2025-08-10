@@ -1,3 +1,4 @@
 *.json
 .env
 docker-compose.yml
+*.txt
