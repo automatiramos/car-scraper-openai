@@ -16,7 +16,12 @@ from typing import List, Dict
 load_dotenv()
 client = OpenAI()
 
-FICHERO_ENTRADA = os.getenv("ARCHIVO_COCHES")
+# Crear directorio de datos si no existe
+DATA_DIR = os.path.join(os.getcwd(), "data")
+if not os.path.exists(DATA_DIR):
+    os.makedirs(DATA_DIR)
+
+FICHERO_ENTRADA = os.getenv("ARCHIVO_COCHES", os.path.join(DATA_DIR, "coches.json"))
 MODELO_ANALISIS = os.getenv("OPENAI_MODEL_ANALISIS", "gpt-4o-mini")
 
 # 2) ------------- Prompt para análisis --------------------------------
@@ -181,7 +186,7 @@ if __name__ == "__main__":
     try:
         analisis = analizar_coches_para_renting(coches_lista)
         date_tag = datetime.now().strftime("%Y-%m-%d_%H-%M")
-        out_file = f"analisis_rentabilidad_{date_tag}.txt"
+        out_file = os.path.join(DATA_DIR, f"analisis_rentabilidad_{date_tag}.txt")
         
         with open(out_file, "w", encoding="utf-8") as f:
             f.write(analisis)

@@ -25,7 +25,15 @@ def buscar_ultimo_analisis():
     """
     Busca el archivo de análisis más reciente.
     """
-    archivos = glob.glob("analisis_rentabilidad_*.txt")
+    # Buscar en el directorio de datos
+    data_dir = os.path.join(os.getcwd(), "data")
+    patron = os.path.join(data_dir, "analisis_rentabilidad_*.txt")
+    archivos = glob.glob(patron)
+    
+    # Si no hay archivos en data/, buscar en el directorio actual
+    if not archivos:
+        archivos = glob.glob("analisis_rentabilidad_*.txt")
+    
     if not archivos:
         return None
     

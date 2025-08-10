@@ -7,8 +7,13 @@ import dotenv
 
 dotenv.load_dotenv()
 
-ARCHIVO_COCHES_ELIMINADO = os.getenv("ARCHIVO_COCHES_ELIMINADO", "coches_eliminados.json")
-ARCHIVO_COCHES = os.getenv("ARCHIVO_COCHES", "coches.json")
+# Crear directorio de datos si no existe
+DATA_DIR = os.path.join(os.getcwd(), "data")
+if not os.path.exists(DATA_DIR):
+    os.makedirs(DATA_DIR)
+
+ARCHIVO_COCHES_ELIMINADO = os.getenv("ARCHIVO_COCHES_ELIMINADO", os.path.join(DATA_DIR, "coches_eliminados.json"))
+ARCHIVO_COCHES = os.getenv("ARCHIVO_COCHES", os.path.join(DATA_DIR, "coches.json"))
 URL_LISTADO = os.getenv("URL_LISTADO", "https://example.com/listing")  # URL configurable
 
 DATE = datetime.now().strftime("%Y-%m-%d")

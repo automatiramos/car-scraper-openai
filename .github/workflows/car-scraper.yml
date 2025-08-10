@@ -1,0 +1,77 @@
+name: Car Scraper and Analysis
+
+on:
+  schedule:
+    # Ejecutar cada 4 horas: 8:00, 12:00, 16:00, 20:00 hora de España (CEST UTC+2)
+    # En UTC son: 6:00, 10:00, 14:00, 18:00 - lunes a sábado
+    - cron: "0 6,10,14,18 * * 1-6"
+  workflow_dispatch:
+    # Permitir ejecución manual
+
+jobs:
+  scrape-and-analyze:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          playwright install chromium
+
+      - name: Download previous car data
+        uses: actions/download-artifact@v4
+        with:
+          name: car-data
+          path: ./data/
+        continue-on-error: true
+
+      - name: Create data directory
+        run: mkdir -p data
+
+      - name: Copy previous data if exists
+        run: |
+          if [ -f "./data/coches.json" ]; then
+            cp ./data/coches.json ./coches.json
+          fi
+          if [ -f "./data/coches_eliminados.json" ]; then
+            cp ./data/coches_eliminados.json ./coches_eliminados.json
+          fi
+
+      - name: Run car scraping
+        env:
+          ARCHIVO_COCHES: "coches.json"
+          ARCHIVO_COCHES_ELIMINADO: "coches_eliminados.json"
+          URL_LISTADO: ${{ secrets.URL_LISTADO }}
+        run: python scrapping_cars.py
+
+      - name: Run car analysis
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          ARCHIVO_COCHES: "coches.json"
+          OPENAI_MODEL_ANALISIS: "gpt-4o-mini"
+        run: python ask_openai_car_evaluation.py
+
+      - name: Send email with analysis
+        env:
+          GMAIL_USER: ${{ secrets.GMAIL_USER }}
+          GMAIL_PASSWORD: ${{ secrets.GMAIL_PASSWORD }}
+          EMAIL_DESTINATARIO: ${{ secrets.EMAIL_DESTINATARIO }}
+        run: python send_email.py
+
+      - name: Save car data as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: car-data
+          path: |
+            coches.json
+            coches_eliminados.json
+            analisis_rentabilidad_*.txt
+          retention-days: 1
