@@ -3,9 +3,9 @@ name: Car Scraper OpenAI
 on:
   # Ejecutarlo a mano desde la pestaña Actions
   workflow_dispatch:
-  # Programado: Ejecutar cada 5 mins. Puedes cambiar la frecuencia según tus necesidades.
+  # Programado: Ejecutar cada 4h de 8 a 23.
   schedule:
-    - cron: "*/5 * * * *"
+    - cron: "0 */4 8-23 * *"
 
 jobs:
   run-scripts:
