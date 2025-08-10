@@ -74,19 +74,25 @@ COMPARATIVA COMPLETA:
 
 TOP 3 RECOMENDADOS:
 🥇 [Modelo] - [Puntuación]/100
-   💰 Beneficio neto: [X]€/mes | Renting: [Y]€/mes
+   💰 Beneficio neto: [X]€/mes | Precio: [Y]€/mes
    🔗 https://amovens.com/leasing/ald/[ID]
-   📝 [Justificación en 3 línea]
+   📝 [Justificación en 3 líneas]
+   📋 DATOS COMPLETOS DEL COCHE:
+   {JSON completo del coche con todos los datos scrapeados}
 
 🥈 [Modelo] - [Puntuación]/100  
-   💰 Beneficio neto: [X]€/mes | Renting: [Y]€/mes
+   💰 Beneficio neto: [X]€/mes | Precio: [Y]€/mes
    🔗 https://amovens.com/leasing/ald/[ID]
-   📝 [Justificación en 3 línea]
+   📝 [Justificación en 3 líneas]
+   📋 DATOS COMPLETOS DEL COCHE:
+   {JSON completo del coche con todos los datos scrapeados}
 
 🥉 [Modelo] - [Puntuación]/100
-   💰 Beneficio neto: [X]€/mes | Renting: [Y]€/mes
+   💰 Beneficio neto: [X]€/mes | Precio: [Y]€/mes
    🔗 https://amovens.com/leasing/ald/[ID]
-   📝 [Justificación en 3 línea]
+   📝 [Justificación en 3 líneas]
+   📋 DATOS COMPLETOS DEL COCHE:
+   {JSON completo del coche con todos los datos scrapeados}
 
 RECOMENDACIÓN FINAL:
 [Recomendación clara y justificación económica]
@@ -102,16 +108,18 @@ Aquí tienes la lista de coches disponibles para renting en Amovens. Cada coche 
 - url: enlace directo al anuncio 
 - modelo, año, precio (cuota mensual), uso (Seminuevo)
 - motor_info, km_por_año, descripcion, emisiones de co2
+- localización, kilometraje, color, neumáticos, etc.
 
 Analiza comparativamente y recomienda el más rentable usando el FORMATO ESPECÍFICO indicado en las instrucciones del sistema.
 
 OBLIGATORIO: 
 1. Usar el formato exacto con títulos, tablas y emojis especificados
 2. Incluir URLs completas en el TOP 3
-3. Crear tabla comparativa con columnas alineadas usando espacios
+3. Crear tabla comparativa con columnas alineadas usando espacios (SIN incluir "Coste renting", solo usar precio/mes)
 4. Usar separadores visuales (=======) para secciones
+5. IMPORTANTE: En cada coche del TOP 3, incluir el JSON completo con TODOS los datos scrapeados bajo "📋 DATOS COMPLETOS DEL COCHE"
 
-El análisis debe ser directo, profesional y listo para enviar por email.
+El análisis debe ser directo, profesional y listo para enviar por email con toda la información detallada.
 
 COCHES DISPONIBLES:
 {json_coches}
