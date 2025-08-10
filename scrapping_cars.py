@@ -91,16 +91,23 @@ def scrape_coches():
         with open(ARCHIVO_COCHES, "r", encoding="utf-8") as f:
             raw = f.read().strip()
             if raw:
-                existing_data = json.loads(raw)
-                for car in existing_data:
-                    car["estado_actualizacion"] = "no actualizado"
-                    existing_by_url[car["url"]] = car
+                data = json.loads(raw)
+                # Verificar que es una lista
+                if isinstance(data, list):
+                    existing_data = data
+                    for car in existing_data:
+                        if isinstance(car, dict) and "url" in car:
+                            car["estado_actualizacion"] = "no actualizado"
+                            existing_by_url[car["url"]] = car
+                else:
+                    print(f"⚠️ {ARCHIVO_COCHES} no contiene una lista válida. Se inicializa limpio.")
+                    existing_data = []
             else:
                 print(f"⚠️ {ARCHIVO_COCHES} existe pero está vacío. Se inicializa limpio.")
     except FileNotFoundError:
         print(f"⚠️ No existe {ARCHIVO_COCHES}. Se creará uno nuevo.")
-    except json.JSONDecodeError:
-        print(f"⚠️ {ARCHIVO_COCHES} está corrupto. Ignorando contenido.")
+    except json.JSONDecodeError as e:
+        print(f"⚠️ {ARCHIVO_COCHES} contiene JSON inválido: {e}. Ignorando contenido.")
         existing_data = []
 
     nuevos = actualizados = sin_cambios = eliminados = 0
@@ -201,9 +208,15 @@ def scrape_coches():
             print(f"❌ No se pudo guardar {ARCHIVO_COCHES_ELIMINADO}: {e}", file=sys.stderr)
         eliminados = len(eliminados_data)
 
+    # Validar que final_data sea una lista antes de guardar
+    if not isinstance(final_data, list):
+        print(f"❌ Error: final_data no es una lista, es {type(final_data)}", file=sys.stderr)
+        final_data = []
+
     try:
         with open(ARCHIVO_COCHES, "w", encoding="utf-8") as f:
             json.dump(final_data, f, indent=2, ensure_ascii=False)
+        print(f"💾 Guardados {len(final_data)} coches en {ARCHIVO_COCHES}")
     except IOError as e:
         print(f"❌ No se pudo guardar {ARCHIVO_COCHES}: {e}", file=sys.stderr)
 
@@ -212,6 +225,13 @@ def scrape_coches():
     print(f"🔁 Actualizados: {actualizados}")
     print(f"✔️ Sin cambios: {sin_cambios}")
     print(f"❌ Eliminados y archivados: {eliminados}")
+    print(f"📋 Total en archivo final: {len(final_data)} coches")
+    
+    # Verificación final de la estructura
+    if isinstance(final_data, list) and all(isinstance(car, dict) for car in final_data):
+        print("✅ Estructura de datos verificada: Lista de JSON válida")
+    else:
+        print("❌ Advertencia: Estructura de datos incorrecta")
 
 if __name__ == "__main__":
     scrape_coches()
