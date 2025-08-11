@@ -44,8 +44,8 @@ jobs:
           if [ -f "./data/coches_eliminados.json" ]; then
             cp ./data/coches_eliminados.json ./data/coches_eliminados.json
           fi
-          if [ -f "./data/analisis_historico.json" ]; then
-            cp ./data/analisis_historico.json ./data/analisis_historico.json
+          if [ -f "./data/coches_ponderados.json" ]; then
+            cp ./data/coches_ponderados.json ./data/coches_ponderados.json
           fi
 
       - name: Run car scraping
@@ -73,9 +73,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: car-data
-          path: |
-            data/coches.json
-            data/coches_eliminados.json
-            data/analisis_historico.json
-            data/analisis_rentabilidad.txt
+          path: data/*
           retention-days: 1

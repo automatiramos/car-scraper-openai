@@ -27,452 +27,108 @@ FICHERO_ENTRADA = os.getenv("ARCHIVO_COCHES", os.path.join(DATA_DIR, "coches.jso
 MODELO_ANALISIS = os.getenv("OPENAI_MODEL_ANALISIS", "gpt-4o-mini")
 
 # Archivo para guardar análisis histórico completo
-ARCHIVO_ANALISIS_HISTORICO = os.path.join(DATA_DIR, "analisis_historico.json")
+ARCHIVO_ANALISIS = os.path.join(DATA_DIR, "analisis.json")
 
 # 2) ------------- Prompt para análisis --------------------------------
 
 PROMPT_ANALISIS_SYSTEM = """
-Eres un analista de movilidad y rentabilidad para renting + subalquiler P2P en Amovens.
-Tu objetivo: calcular el beneficio neto mensual EXACTO para cada coche.
+Eres un analista de rentabilidad para renting + subalquiler P2P en Amovens.
+Objetivo: calcular el beneficio neto mensual por coche con reglas fijas.
 
-PARÁMETROS FIJOS (usar siempre estos valores):
-- Ocupación: EXACTAMENTE 13 días/mes (compactos/medianos), 10 días/mes (SUVs)
-- Comisión Amovens: EXACTAMENTE 20%
-- Ubicación: Madrid centro
-- NO incluir vehículos eléctricos (BEV)
-- Redondear SIEMPRE hacia abajo (sin decimales)
+Parámetros fijos:
 
-ESTIMACIÓN DE PRECIO/DÍA (ser conservador):
-Usa estos precios base para Madrid y ajusta según características:
-- Referencia: Renault Clio 2019 = 38€/día (lunes)
-- Segmento B/compacto: base 35-40€/día
-- Segmento C/mediano: base 39-41€/día  
-- SUV compacto: base 40-45€/día
+Segmento y precio_alquiler_dia:
+- Segmento B: 32 €
+- Segmento C: 35 €
+- SUV compacto: 42 €
+Determinar segmento según modelo o descripción.
 
-AJUSTES OBLIGATORIOS:
-- Cambio automático: +3€/día
-- Híbrido/PHEV: +3€/día (solo si aporta etiqueta ECO o 0)
-- Motor diésel eficiente: +3€/día
-- CarPlay/Android Auto: +1€/día
-- Sensores parking: +1€/día
-- Km/año >18.000: -3€/día
-- Km/año <13.000: +2€/día
+coste_renting:
+- Es el número del campo "precio" (en euros/mes).
 
-ETIQUETAS AMBIENTALES ESPAÑOLAS (usar solo estas 4):
-- ETIQUETA 0 (Azul): Vehículos más eficientes. BEV, REEV, PHEV con >40km autonomía, pila combustible
-- ETIQUETA ECO (Verde-Azul): Híbridos, gas. PHEV <40km, HEV, GNC, GNL, GLP + criterios etiqueta C
-- ETIQUETA C (Verde): Combustión Euro reciente. Gasolina desde 2006, diésel desde sept-2015
-- ETIQUETA B (Amarilla): Combustión Euro anterior. Gasolina desde 2001, diésel desde 2006
+puntos_extra (sumar todos los aplicables):
++3 si automático
++3 si etiqueta ECO o 0
++3 si diésel eficiente
++1 si CarPlay o Android Auto
++1 si sensores o cámara
++2 si buen espacio interior/maletero
++1 si aire acondicionado/climatizador
++2 si mantenimiento documentado
++1 si entrega flexible (acceso sin llave)
 
-CÁLCULO ECONÓMICO EXACTO:
-1. Ingresos mensuales = precio_día_estimado x días_ocupación x 0.8 (descuenta comisión 20%)
-   - Compactos/Medianos: precio_día x 13 x 0.8
-   - SUVs: precio_día x 10 x 0.8
-2. Coste renting = extraer número del campo "precio" (ej: "299 € al mes" → 299)
-3. Beneficio neto = ingresos_mensuales - coste_renting
+ponderación: (añadir al campo ponderación)
+Si es automático añadir "Es automático"
+Si es etiqueta ECO añadir "Es etiqueta ECO"
+Si es diésel eficiente añadir "Es diésel eficiente"
+Si tiene CarPlay o Android Auto añadir "Tiene CarPlay o Android Auto"
+Si tiene sensores o cámara añadir "Tiene sensores o cámara"
+Si tiene buen espacio interior/maletero añadir "Tiene buen espacio interior/maletero"
+Si tiene aire acondicionado/climatizador añadir "Tiene aire acondicionado/climatizador"
+Si tiene mantenimiento documentado añadir "Tiene mantenimiento documentado"
+Si tiene entrega flexible (acceso sin llave) añadir "Tiene entrega flexible (acceso sin llave)"
 
-FORMATO DE SALIDA OBLIGATORIO:
+etiqueta_ambiental:
+La etiqueta_ambiental SOLO puede ser uno de estos CUATRO valores EXACTOS (nunca otro):
+- "0":  BEV, REEV, PHEV >40 km
+- "ECO":  híbridos/gas que cumplan C
+- "C":  gasolina desde 2006 o diésel desde sept-2015
+- "B":  gasolina desde 2001 o diésel desde 2006
+No devuelvas nunca ningún otro valor, ni "E", ni "D", ni "A", ni vacío, ni null. Si no puedes determinar la etiqueta, escribe NO DETERMINADO
 
-===========================================
-🚗 ANÁLISIS DE RENTABILIDAD - COCHES RENTING
-===========================================
+consumo:
+- Usar valor en l/100km si está disponible.
+- Si no, estimar = (emisiones_CO2_gkm ÷ 23), redondeado a 1 decimal.
 
-📅 Fecha: [FECHA_ACTUAL]
-📍 Ubicación: Madrid  
-🎯 Objetivo: Renting + Subalquiler P2P
+ingresos_mensuales:
+- B/C: precio_alquiler_dia × 13 × 0.8
+- SUV: precio_alquiler_dia × 10 × 0.8
 
-PARÁMETROS FIJOS:
-- Ocupación: 13 días/mes (compactos/medianos), 10 días/mes (SUVs)
-- Comisión Amovens: 20%
-- Filtros: Sin eléctricos, preferencia manual
-- Redondeo: hacia abajo, sin decimales
+beneficio_neto:
+= ingresos_mensuales - coste_renting
 
-TOP 10 RENTABILIDAD (ordenado por beneficio neto):
-
-Pos | Modelo                    | Renting/mes | Precio/día | Ingresos/mes | Beneficio | Consumo | Etiqueta
-----|---------------------------|-------------|------------|--------------|-----------|---------|----------
-1   | [Modelo exacto]           | [X]€        | [Y]€       | [Z]€         | [W]€      | [C]l/km | [0/ECO/C/B]
-2   | [Modelo exacto]           | [X]€        | [Y]€       | [Z]€         | [W]€      | [C]l/km | [0/ECO/C/B]
-...hasta 10
-
-TOP 3 RECOMENDADOS:
-🥇 [Modelo] 
-   💰 Beneficio neto: [X]€/mes | Renting: [Y]€/mes
-   ⛽ Consumo: [C]l/km | 🏷️ Etiqueta: [0/ECO/C/B]
-   🔗 [URL completa]
-   📝 [Justificación basada en cálculos exactos]
-
-🥈 [Segundo modelo con mismo formato]
-
-🥉 [Tercer modelo con mismo formato]
-
-RECOMENDACIÓN FINAL:
-[Recomendación basada en el beneficio neto más alto]
-
-===========================================
-
-INSTRUCCIONES CRÍTICAS:
-- Usar SIEMPRE los mismos cálculos y ajustes
-- Mostrar números EXACTOS sin rangos
-- Ordenar SIEMPRE por beneficio neto (mayor a menor)
-- Redondear hacia abajo en todos los cálculos
-- NO usar estimaciones variables, usar fórmulas fijas
-- NO incluir datos completos JSON - solo URLs en el TOP 3
-- IDENTIFICAR SUVs por modelo (ej: Qashqai, Tiguan, Tucson, Kuga, etc.) y usar 10 días ocupación
-- Compactos/Medianos usar 13 días ocupación
+Salida:
+Devuelve ÚNICAMENTE un JSON puro, sin texto extra ni marcas de formato, con una lista de objetos.
+Cada objeto debe contener:
+url, precio_alquiler_dia, ingresos_mensuales, coste_renting, beneficio_neto, etiqueta_ambiental, consumo, puntos_extra, ponderación, segmento
 """
-
+# Plantilla para el mensaje del usuario
 PROMPT_ANALISIS_USER_TEMPLATE = """
-Aquí tienes la lista de coches disponibles para renting en Amovens. 
+Lista de coches para analizar rentabilidad.
 
-INSTRUCCIONES ESPECÍFICAS:
-1. Calcular EXACTAMENTE usando las fórmulas del sistema
-2. Mostrar TOP 10 en tabla ordenada por beneficio neto (mayor a menor)
-3. Redondear SIEMPRE hacia abajo, sin decimales
-4. Usar temperatura 0 - deben salir los MISMOS resultados cada vez
-5. Filtrar automáticamente los eléctricos (BEV)
-6. Incluir consumo l/km y etiqueta ambiental en tabla y TOP 3
-7. IDENTIFICAR SUVs y aplicar ocupación de 10 días (vs 13 días para otros)
+Datos de entrada por coche:
+- url
+- modelo
+- precio
+- motor_info
+- km_por_año
+- año
+- descripcion
+- emisiones de co2
 
-DATOS DE CADA COCHE:
-- url: enlace directo
-- modelo: nombre completo
-- precio: cuota mensual de renting (extraer solo el número)
-- motor_info: información del motor y transmisión
-- km_por_año: kilometraje anual estimado
-- consumo: l/km si está disponible
-- etiqueta ambiental: 0, ECO, C, B (usar clasificación española)
-- Otros: año, descripción, localización, etc.
+Instrucciones:
+1. Determinar segmento (B, C o SUV) según el modelo/tipo.
+2. Asignar precio_alquiler_dia según segmento (usar reglas del prompt system).
+3. Calcular ingresos_mensuales:
+   - B/C: precio_alquiler_dia × 13 × 0.8
+   - SUV: precio_alquiler_dia × 10 × 0.8
+4. Extraer coste_renting (número del campo precio).
+5. Calcular beneficio_neto = ingresos_mensuales - coste_renting.
+6. Calcular consumo en l/100km (usar valor directo o emisiones/23).
+7. Determinar etiqueta_ambiental según reglas.
+8. Calcular puntos_extra sumando todos los que correspondan.
+9. Añadir ponderación según características del coche.
+10. Devolver todos los datos calculados y el segmento detectado.
 
-CÁLCULO OBLIGATORIO PARA CADA COCHE:
-1. Determinar precio/día según segmento + ajustes fijos
-2. Calcular ingresos según tipo:
-   - Compactos/Medianos: precio_día x 13 x 0.8
-   - SUVs: precio_día x 10 x 0.8
-3. Extraer coste renting del campo "precio"
-4. Beneficio = ingresos - coste_renting
-5. Mostrar consumo y etiqueta en tabla
+Salida:
+Devolver SOLO un JSON con una lista de objetos, cada uno con:
+url, precio_alquiler_dia, ingresos_mensuales, coste_renting, beneficio_neto, etiqueta_ambiental, consumo, puntos_extra, ponderación, segmento
 
-COCHES DISPONIBLES:
+Coches:
 {json_coches}
 """
 
-# 3) ------------- Análisis comparativo con ChatGPT -------------
-def extraer_urls_top3(texto_analisis: str) -> List[str]:
-    """
-    Extrae las URLs del TOP 3 del análisis generado por la IA.
-    """
-    urls = []
-    
-    # Buscar URLs en el texto del análisis
-    url_pattern = r'🔗\s*(https?://[^\s\n]+)'
-    matches = re.findall(url_pattern, texto_analisis)
-    
-    return matches[:3]  # Solo las primeras 3
-
-def buscar_datos_coche_por_url(url: str, lista_coches: List[Dict]) -> Dict:
-    """
-    Busca los datos completos de un coche por su URL en la lista original.
-    """
-    for coche in lista_coches:
-        if coche.get("url") == url:
-            return coche
-    return {}
-
-def añadir_datos_completos_top3(analisis: str, lista_coches: List[Dict]) -> str:
-    """
-    Añade los datos completos del JSON al análisis para el TOP 3.
-    """
-    urls_top3 = extraer_urls_top3(analisis)
-    
-    if not urls_top3:
-        return analisis
-    
-    # Buscar los datos para cada URL
-    datos_completos = []
-    for url in urls_top3:
-        datos = buscar_datos_coche_por_url(url, lista_coches)
-        if datos:
-            datos_completos.append(datos)
-    
-    # Añadir los datos al final del análisis
-    if datos_completos:
-        analisis += "\n\n" + "="*60 + "\n"
-        analisis += "📋 DATOS COMPLETOS DE LOS TOP 3 COCHES:\n"
-        analisis += "="*60 + "\n\n"
-        
-        for i, datos in enumerate(datos_completos, 1):
-            analisis += f"🏆 TOP {i} - DATOS COMPLETOS:\n"
-            analisis += json.dumps(datos, indent=2, ensure_ascii=False)
-            analisis += "\n\n" + "-"*40 + "\n\n"
-    
-    return analisis
-
-def analizar_coches_para_renting(lista_coches: List[Dict]) -> str:
-    """
-    Envía la lista completa de coches y obtiene un análisis comparativo y una recomendación clara.
-    """
-    # (Opcional) pre-normalizar campos útiles para el análisis
-    coches_norm = []
-    for c in lista_coches:
-        coches_norm.append({
-            **c
-        })
-
-    json_coches = json.dumps(coches_norm, ensure_ascii=False, indent=2)
-    user_msg = PROMPT_ANALISIS_USER_TEMPLATE.format(json_coches=json_coches)
-
-    resp = client.chat.completions.create(
-        model=MODELO_ANALISIS,
-        temperature=0.0,  # Máxima consistencia
-        messages=[
-            {"role": "system", "content": PROMPT_ANALISIS_SYSTEM},
-            {"role": "user", "content": user_msg}
-        ]
-    )
-    
-    analisis_base = resp.choices[0].message.content.strip()
-    
-    # Añadir datos completos del TOP 3 desde el JSON local
-    analisis_completo = añadir_datos_completos_top3(analisis_base, lista_coches)
-    
-    return analisis_completo
-
-# 4) ------------- Funciones para análisis incremental -------------------------
-
-def cargar_analisis_historico() -> Dict:
-    """
-    Carga el análisis histórico desde archivo JSON.
-    """
-    if not os.path.exists(ARCHIVO_ANALISIS_HISTORICO):
-        return {"coches_analizados": {}, "top_3_actual": [], "ultimo_analisis": ""}
-    
-    try:
-        with open(ARCHIVO_ANALISIS_HISTORICO, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except (json.JSONDecodeError, FileNotFoundError):
-        return {"coches_analizados": {}, "top_3_actual": [], "ultimo_analisis": ""}
-
-def guardar_analisis_historico(datos: Dict):
-    """
-    Guarda el análisis histórico en archivo JSON.
-    """
-    try:
-        with open(ARCHIVO_ANALISIS_HISTORICO, "w", encoding="utf-8") as f:
-            json.dump(datos, f, indent=2, ensure_ascii=False)
-    except Exception as e:
-        print(f"⚠️ Error guardando análisis histórico: {e}")
-
-def extraer_datos_coche_de_analisis(analisis_texto: str) -> List[Dict]:
-    """
-    Extrae los datos de rentabilidad de cada coche desde el texto del análisis.
-    Retorna lista de diccionarios con: modelo, beneficio, precio_dia, ingresos, renting, url.
-    """
-    coches_data = []
-    
-    # Buscar la tabla TOP 10
-    tabla_pattern = r'TOP 10 RENTABILIDAD.*?\n(.*?)(?=\n\nTOP 3|$)'
-    tabla_match = re.search(tabla_pattern, analisis_texto, re.DOTALL)
-    
-    if tabla_match:
-        tabla_content = tabla_match.group(1)
-        # Buscar cada línea de coche en la tabla
-        lineas = tabla_content.split('\n')
-        for linea in lineas:
-            if '|' in linea and not linea.startswith('-') and not linea.startswith('Pos'):
-                partes = [p.strip() for p in linea.split('|')]
-                if len(partes) >= 7:  # Pos, Modelo, Renting/mes, Precio/día, Ingresos/mes, Beneficio, Consumo, Etiqueta
-                    try:
-                        modelo = partes[1]
-                        renting = int(re.search(r'(\d+)', partes[2]).group(1)) if re.search(r'(\d+)', partes[2]) else 0
-                        precio_dia = int(re.search(r'(\d+)', partes[3]).group(1)) if re.search(r'(\d+)', partes[3]) else 0
-                        ingresos = int(re.search(r'(\d+)', partes[4]).group(1)) if re.search(r'(\d+)', partes[4]) else 0
-                        beneficio = int(re.search(r'(\d+)', partes[5]).group(1)) if re.search(r'(\d+)', partes[5]) else 0
-                        
-                        coches_data.append({
-                            "modelo": modelo,
-                            "beneficio": beneficio,
-                            "precio_dia": precio_dia,
-                            "ingresos": ingresos,
-                            "renting": renting
-                        })
-                    except (AttributeError, ValueError, IndexError):
-                        continue
-    
-    return coches_data
-
-def filtrar_coches_nuevos(lista_coches: List[Dict], analisis_historico: Dict) -> List[Dict]:
-    """
-    Filtra solo los coches que realmente necesitan análisis:
-    1. Coches con estado_actualizacion: 'nuevo'
-    2. Coches que NO están en el análisis histórico
-    3. Coches 'actualizado' con cambios en datos clave (precio, modelo)
-    """
-    coches_ya_analizados = analisis_historico.get("coches_analizados", {})
-    urls_analizadas = set(coches_ya_analizados.keys())
-    
-    coches_para_analizar = []
-    
-    for coche in lista_coches:
-        url_coche = coche.get("url", "")
-        estado = coche.get("estado_actualizacion", "")
-        
-        if estado == "nuevo":
-            if url_coche not in urls_analizadas:
-                coches_para_analizar.append(coche)
-            else:
-                print(f"⚠️ Coche nuevo ya analizado anteriormente: {coche.get('modelo', 'Sin modelo')}")
-        
-        elif estado == "actualizado" and url_coche in urls_analizadas:
-            # Verificar si cambió precio o modelo (datos clave para rentabilidad)
-            coche_previo = coches_ya_analizados[url_coche]
-            precio_actual = coche.get("precio", "")
-            modelo_actual = coche.get("modelo", "")
-            
-            # Extraer números de precio para comparación
-            precio_num_actual = re.search(r'(\d+)', precio_actual)
-            precio_num_actual = int(precio_num_actual.group(1)) if precio_num_actual else 0
-            
-            precio_previo = coche_previo.get("renting", 0)
-            modelo_previo = coche_previo.get("modelo", "")
-            
-            if precio_num_actual != precio_previo or modelo_actual != modelo_previo:
-                coches_para_analizar.append(coche)
-                print(f"🔄 Coche actualizado necesita re-análisis: {modelo_actual}")
-    
-    print(f"🆕 Coches nuevos para analizar: {len(coches_para_analizar)}")
-    print(f"🚫 Coches ya analizados (evitados): {len([c for c in lista_coches if c.get('estado_actualizacion') == 'nuevo' and c.get('url') in urls_analizadas])}")
-    
-    return coches_para_analizar
-
-def limpiar_coches_eliminados(analisis_historico: Dict, lista_coches_actual: List[Dict]) -> Dict:
-    """
-    Elimina del histórico los coches que ya no están disponibles en el listado actual.
-    """
-    urls_actuales = {coche.get("url") for coche in lista_coches_actual if coche.get("url")}
-    coches_analizados = analisis_historico.get("coches_analizados", {})
-    
-    # Filtrar solo los coches que siguen disponibles
-    coches_filtrados = {
-        url: datos for url, datos in coches_analizados.items() 
-        if url in urls_actuales
-    }
-    
-    eliminados = len(coches_analizados) - len(coches_filtrados)
-    if eliminados > 0:
-        print(f"🗑️ Eliminados {eliminados} coches del histórico (ya no disponibles)")
-        analisis_historico["coches_analizados"] = coches_filtrados
-        
-        # Actualizar TOP 3 si es necesario
-        todos_disponibles = list(coches_filtrados.values())
-        todos_disponibles.sort(key=lambda x: x.get("beneficio", 0), reverse=True)
-        analisis_historico["top_3_actual"] = todos_disponibles[:3]
-    
-    return analisis_historico
-
-def combinar_con_analisis_previo(nuevos_resultados: str, analisis_historico: Dict, todos_los_coches: List[Dict]) -> str:
-    """
-    Combina los resultados de coches nuevos con el análisis histórico y actualiza el TOP 3 si es necesario.
-    """
-    # Extraer datos de rentabilidad de los coches nuevos
-    datos_nuevos = extraer_datos_coche_de_analisis(nuevos_resultados)
-    
-    # Recuperar datos del análisis previo
-    coches_previos = analisis_historico.get("coches_analizados", {})
-    top_3_previo = analisis_historico.get("top_3_actual", [])
-    
-    # Añadir los nuevos coches analizados
-    for dato in datos_nuevos:
-        # Buscar URL del coche en la lista completa
-        coche_completo = next((c for c in todos_los_coches if c.get("modelo") == dato["modelo"]), None)
-        if coche_completo:
-            clave_coche = coche_completo.get("url", dato["modelo"])
-            coches_previos[clave_coche] = {
-                **dato,
-                "url": coche_completo.get("url", ""),
-                "fecha_analisis": datetime.now().strftime("%Y-%m-%d %H:%M")
-            }
-    
-    # Crear lista completa ordenada por beneficio
-    todos_analizados = list(coches_previos.values())
-    todos_analizados.sort(key=lambda x: x.get("beneficio", 0), reverse=True)
-    
-    # Tomar TOP 10 y TOP 3
-    top_10 = todos_analizados[:10]
-    top_3_nuevo = todos_analizados[:3]
-    
-    # Generar análisis combinado
-    analisis_combinado = generar_analisis_combinado(top_10, top_3_nuevo, todos_los_coches, len(datos_nuevos))
-    
-    # Actualizar análisis histórico
-    analisis_historico.update({
-        "coches_analizados": coches_previos,
-        "top_3_actual": top_3_nuevo,
-        "ultimo_analisis": datetime.now().strftime("%Y-%m-%d %H:%M"),
-        "total_coches_analizados": len(coches_previos)
-    })
-    
-    return analisis_combinado
-
-def generar_analisis_combinado(top_10: List[Dict], top_3: List[Dict], todos_los_coches: List[Dict], coches_nuevos_count: int) -> str:
-    """
-    Genera un análisis completo con el TOP 10 y TOP 3 actualizados.
-    """
-    fecha_actual = datetime.now().strftime("%d/%m/%Y")
-    
-    analisis = f"""===========================================
-🚗 ANÁLISIS DE RENTABILIDAD - COCHES RENTING
-===========================================
-
-📅 Fecha: {fecha_actual}
-📍 Ubicación: Madrid  
-🎯 Objetivo: Renting + Subalquiler P2P
-
-PARÁMETROS FIJOS:
-- Ocupación: 13 días/mes (compactos/medianos), 10 días/mes (SUVs)
-- Comisión Amovens: 20%
-- Filtros: Sin eléctricos, preferencia manual
-- Redondeo: hacia abajo, sin decimales
-
-🆕 COCHES NUEVOS ANALIZADOS: {coches_nuevos_count}
-📊 TOTAL COCHES EN BASE DE DATOS: {len(top_10)}
-
-TOP 10 RENTABILIDAD (ordenado por beneficio neto):
-
-Pos | Modelo                    | Renting/mes | Precio/día | Ingresos/mes | Beneficio | Consumo | Etiqueta
-----|---------------------------|-------------|------------|--------------|-----------|---------|----------"""
-    
-    for i, coche in enumerate(top_10, 1):
-        # Buscar datos completos del coche
-        coche_completo = next((c for c in todos_los_coches if c.get("url") == coche.get("url")), {})
-        consumo = coche_completo.get("emisiones de co2", "N/A")
-        etiqueta = "C"  # Valor por defecto
-        
-        analisis += f"\n{i:<3} | {coche['modelo']:<25} | {coche['renting']:<11}€ | {coche['precio_dia']:<10}€ | {coche['ingresos']:<12}€ | {coche['beneficio']:<9}€ | {consumo:<7} | {etiqueta}"
-    
-    analisis += "\n\nTOP 3 RECOMENDADOS:\n"
-    
-    for i, coche in enumerate(top_3, 1):
-        coche_completo = next((c for c in todos_los_coches if c.get("url") == coche.get("url")), {})
-        
-        emoji = "🥇" if i == 1 else "🥈" if i == 2 else "🥉"
-        analisis += f"{emoji} {coche['modelo']}\n"
-        analisis += f"   💰 Beneficio neto: {coche['beneficio']}€/mes | Renting: {coche['renting']}€/mes\n"
-        analisis += f"   ⛽ Consumo: {coche_completo.get('emisiones de co2', 'N/A')} | 🏷️ Etiqueta: C\n"
-        analisis += f"   🔗 {coche.get('url', 'URL no disponible')}\n"
-        analisis += f"   📝 Excelente rentabilidad basada en cálculos exactos\n\n"
-    
-    analisis += f"""RECOMENDACIÓN FINAL:
-El {top_3[0]['modelo']} ofrece el mejor beneficio neto de {top_3[0]['beneficio']}€/mes, siendo la opción más rentable para renting + subalquiler en Amovens.
-
-==========================================="""
-    
-    # Añadir datos completos del TOP 3
-    analisis = añadir_datos_completos_top3(analisis, todos_los_coches)
-    
-    return analisis
-
-# 5) ------------- Carga de datos -------------------------
+# ------------- Carga de datos -------------------------
 def cargar_coches(path: str):
     """Generador de dicts coche desde JSON o JSONL."""
     if not path or not os.path.exists(path):
@@ -490,143 +146,187 @@ def cargar_coches(path: str):
                     continue
                 yield json.loads(line)
 
-def verificar_estado_analisis(lista_coches: List[Dict], analisis_historico: Dict):
+def analizar_coches_para_renting(lista_coches: List[Dict]) -> str:
     """
-    Muestra un resumen detallado del estado del análisis.
+    Envía la lista de coches a OpenAI para un análisis comparativo y una recomendación clara.
     """
-    coches_analizados = analisis_historico.get("coches_analizados", {})
-    urls_analizadas = set(coches_analizados.keys())
-    
-    estados = {}
-    for coche in lista_coches:
-        estado = coche.get("estado_actualizacion", "desconocido")
-        url = coche.get("url", "")
-        
-        if estado not in estados:
-            estados[estado] = {"total": 0, "ya_analizados": 0}
-        
-        estados[estado]["total"] += 1
-        if url in urls_analizadas:
-            estados[estado]["ya_analizados"] += 1
-    
-    print("\n🔍 Estado del Análisis:")
-    for estado, datos in estados.items():
-        pendientes = datos["total"] - datos["ya_analizados"]
-        print(f"   {estado}: {datos['total']} total, {datos['ya_analizados']} analizados, {pendientes} pendientes")
 
-# 6) ------------- Script principal con análisis incremental -----------------------
+    user_msg = PROMPT_ANALISIS_USER_TEMPLATE.format(json_coches=json.dumps(lista_coches, ensure_ascii=False, indent=2))
+
+    resp = client.chat.completions.create(
+        model=MODELO_ANALISIS,
+        temperature=0.0,  # Máxima consistencia
+        messages=[
+            {"role": "system", "content": PROMPT_ANALISIS_SYSTEM},
+            {"role": "user", "content": user_msg}
+        ]
+    )
+    
+    analisis_coches_nuevos = resp.choices[0].message.content.strip()
+
+
+    return  analisis_coches_nuevos
+
+def ponderar_coches(coches: List[Dict]) -> List[Dict]:
+    """
+    Pondera los coches según su rentabilidad y otros factores.
+    """
+    # Reglas si el km_por_año < 10.000
+    for coche in coches:
+        if coche.get("km_por_año", 0) < 10000:
+            coche["puntos_extra"] = coche.get("puntos_extra", 0) + 1
+            coche["ponderación"] =  coche.get("ponderación", "") + "* Kms por año menor de 10.000 * "
+        if coche.get("beneficio_neto", 0) > 0 < 50:
+            coche["puntos_extra"] = coche.get("puntos_extra", 0) + 1
+            coche["ponderación"] = coche.get("ponderación", "") + "* Beneficio neto positivo * "
+        if coche.get("beneficio_neto") > 50:
+            coche["puntos_extra"] = coche.get("puntos_extra", 0) + 1
+            coche["ponderación"] = coche.get("ponderación", "") + "* Beneficio neto alto *"
+        if coche.get("etiqueta_ambiental") == "0" or coche.get("etiqueta_ambiental") == "ECO":
+            coche["puntos_extra"] = coche.get("puntos_extra", 0) + 1
+            coche["ponderación"] = coche.get("ponderación", "") + "* Etiqueta ambiental 0 o ECO *"
+        if coche.get("consumo", 0) < 5.5:
+            coche["puntos_extra"] = coche.get("puntos_extra", 0) + 1
+            coche["ponderación"] = coche.get("ponderación", "") + "* Consumo menor de 5.5 l/100km *"
+    # Ordenar por beneficio neto
+    coches = sorted(coches, key=lambda x: (x.get("beneficio_neto", 0)), reverse=True)
+
+    return coches
+
+def crear_informe(coches: List[Dict]) -> str:
+    """
+    Crea un informe a partir de la lista de coches ponderados.
+    """
+    # Cabecera
+    informe = (
+        "🚗 INFORME DE RENTABILIDAD DE COCHES PARA RENTING + SUBALQUILER 🚗\n"
+        "============================================================\n\n"
+        "📊 Resumen de los coches analizados y ponderados para rentabilidad en renting + subalquiler (Amovens).\n\n"
+    )
+    # Tabla principal
+    headers = [
+        "Modelo", "Año", "Km/año", "Precio/día", "Ingresos", "Renting", "Beneficio", "Etiqueta", "Consumo", "Puntos", "Ponderación"
+    ]
+    rows = []
+    for coche in coches:
+        rows.append([
+            str(coche.get('modelo', '')),
+            str(coche.get('año', '')),
+            str(coche.get('km_por_año', '')),
+            f"{coche.get('precio_alquiler_dia', 0):.2f}" if coche.get('precio_alquiler_dia') is not None else '',
+            f"{coche.get('ingresos_mensuales', 0):.2f}" if coche.get('ingresos_mensuales') is not None else '',
+            f"{coche.get('coste_renting', 0):.2f}" if coche.get('coste_renting') is not None else '',
+            f"{coche.get('beneficio_neto', 0):.2f}" if coche.get('beneficio_neto') is not None else '',
+            str(coche.get('etiqueta_ambiental', '')),
+            str(coche.get('consumo', '')),
+            str(coche.get('puntos_extra', '')),
+            str(coche.get('ponderación', ''))
+        ])
+    # Ajustar anchos
+    col_widths = [max(len(str(x)) for x in [h] + [row[i] for row in rows]) for i, h in enumerate(headers)]
+    # Construir tabla
+    def format_row(row):
+        return " | ".join(str(val).ljust(col_widths[i]) for i, val in enumerate(row))
+    informe += format_row(headers) + "\n"
+    informe += "-+-".join('-' * w for w in col_widths) + "\n"
+    for row in rows:
+        informe += format_row(row) + "\n"
+
+    informe += "\n🏆 TOP 3 COCHES MÁS RENTABLES 🏆\n==========================\n"
+    coches_top = sorted(coches, key=lambda x: (x.get("beneficio_neto", 0), x.get("puntos_extra", 0)), reverse=True)[:3]
+    for idx, coche in enumerate(coches_top, 1):
+        medalla = "🥇" if idx == 1 else ("🥈" if idx == 2 else "🥉")
+        informe += f"\n{medalla} #{idx}: {coche.get('modelo', '')} ({coche.get('año', '')})\n"
+        informe += f"🔗 URL: {coche.get('url', '')}\n"
+        informe += f"📄 Contrato: {coche.get('contrato', '')}\n"
+        informe += f"🛠️ Uso: {coche.get('uso', '')}\n"
+        informe += f"🔄 Estado actualización: {coche.get('estado_actualizacion', '')}\n"
+        informe += f"🚙 Motor: {coche.get('motor_info', '')}\n"
+        informe += f"📝 Descripción: {coche.get('descripcion', '')}\n"
+        informe += f"📉 Kilometraje: {coche.get('kilometraje', '')}\n"
+        informe += f"🎨 Color: {coche.get('color', '')}\n"
+        informe += f"📆 Km/año: {coche.get('km_por_año', '')}\n"
+        informe += f"💶 Precio alquiler/día: {coche.get('precio_alquiler_dia', '')}\n"
+        informe += f"💰 Ingresos mensuales: {coche.get('ingresos_mensuales', '')}\n"
+        informe += f"💸 Coste renting: {coche.get('coste_renting', '')}\n"
+        informe += f"📈 Beneficio neto: {coche.get('beneficio_neto', '')}\n"
+        informe += f"♻️ Etiqueta ambiental: {coche.get('etiqueta_ambiental', '')}\n"
+        informe += f"⛽ Consumo: {coche.get('consumo', '')}\n"
+        informe += f"🚦 Segmento: {coche.get('segmento', '')}\n"
+        informe += f"⭐ Puntos extra: {coche.get('puntos_extra', '')}\n"
+        informe += f"🏷️ Ponderación: {coche.get('ponderación', '')}\n"
+
+    informe += "\n✅ -- Fin del informe -- ✅\n"
+    return informe
+
+# 1) ------------- Análisis de coches para renting -----------------------
 if __name__ == "__main__":
-    coches_lista = list(cargar_coches(FICHERO_ENTRADA))
+    print("🚗 Cargando lista de coches...")
+    coches = list(cargar_coches(FICHERO_ENTRADA))
+    print(f"✅ Lista de coches cargada: {len(coches)} coches encontrados.")
+
+    # Solo se analizan los coches nuevos. Los coches con estado 'sin_cambios' ya han sido analizados previamente
+    # y están en la lista de coches ponderados, por lo que no se vuelven a enviar a OpenAI ni a recalcular.
+    print("🆕 Filtrando coches nuevos...")
+    coches_nuevos = [coche for coche in coches if coche.get("estado_actualizacion") == "nuevo"]
+    print(f"✅ Lista de coches nuevos: {len(coches_nuevos)} coches encontrados.")
+
+    print("🤖 Enviando coches nuevos a OpenAI para análisis...")
+    analisis_coches_nuevos = analizar_coches_para_renting(coches_nuevos)
+    print("✅ Análisis de coches para renting completado de los coches nuevos.")
+
+    print("💾 Guardando análisis de coches nuevos en JSON...")
+    with open(ARCHIVO_ANALISIS.split('.')[0] + "_coches_nuevos.json", "w", encoding="utf-8") as f:
+        f.write(analisis_coches_nuevos)
+
+    print("🔄 Actualizando información de coches con análisis...")
+    coches_nuevos_actualizados = []
+    for analisis in json.loads(analisis_coches_nuevos):
+        url = analisis.get("url")
+        if url:
+            for coche in coches_nuevos:
+                if coche.get("url") == url:
+                    coche.update(analisis)
+                    coches_nuevos_actualizados.append(coche)
+                    break
+
+    print("💾 Guardando coches actualizados...")
+    with open(ARCHIVO_ANALISIS.split('.')[0] + "_coches_nuevos_actualizados.json", "w", encoding="utf-8") as f:
+        f.write(json.dumps(coches_nuevos_actualizados, ensure_ascii=False, indent=2))
+
+    print("📊 Ponderando coches según reglas de rentabilidad...")
+    coches_nuevos_ponderados = ponderar_coches(coches_nuevos_actualizados)
+    print(f"✅ Coches nuevos ponderados: {len(coches_nuevos_ponderados)} coches.")
+
     
-    if not coches_lista:
-        print("ℹ️ No se encontraron coches para analizar.")
-        exit(1)
-    
-    print(f"📊 Total de coches en archivo: {len(coches_lista)}")
-    
-    # Cargar análisis histórico
-    analisis_historico = cargar_analisis_historico()
-    print(f"🗃️ Coches ya analizados: {len(analisis_historico.get('coches_analizados', {}))}")
-    
-    # Limpiar coches que ya no están disponibles
-    analisis_historico = limpiar_coches_eliminados(analisis_historico, coches_lista)
-    
-    # Mostrar estado detallado del análisis
-    verificar_estado_analisis(coches_lista, analisis_historico)
-    
-    # Filtrar solo coches nuevos que no estén ya analizados
-    coches_nuevos = filtrar_coches_nuevos(coches_lista, analisis_historico)
-    
-    if not coches_nuevos:
-        print("✅ No hay coches nuevos para analizar.")
-        
-        # Mostrar el último análisis si existe
-        if analisis_historico.get("top_3_actual"):
-            print("📋 Mostrando análisis más reciente con datos existentes...")
-            analisis_final = generar_analisis_combinado(
-                list(analisis_historico["coches_analizados"].values())[:10],
-                analisis_historico["top_3_actual"][:3],
-                coches_lista,
-                0
-            )
-        else:
-            print("⚠️ No hay análisis histórico. Ejecutando análisis completo...")
-            analisis_final = analizar_coches_para_renting(coches_lista)
-            # Extraer y guardar datos en histórico
-            datos_extraidos = extraer_datos_coche_de_analisis(analisis_final)
-            for dato in datos_extraidos:
-                coche_completo = next((c for c in coches_lista if c.get("modelo") == dato["modelo"]), None)
-                if coche_completo:
-                    clave_coche = coche_completo.get("url", dato["modelo"])
-                    analisis_historico.setdefault("coches_analizados", {})[clave_coche] = {
-                        **dato,
-                        "url": coche_completo.get("url", ""),
-                        "fecha_analisis": datetime.now().strftime("%Y-%m-%d %H:%M")
-                    }
-            
-            # Actualizar TOP 3
-            todos_analizados = list(analisis_historico["coches_analizados"].values())
-            todos_analizados.sort(key=lambda x: x.get("beneficio", 0), reverse=True)
-            analisis_historico["top_3_actual"] = todos_analizados[:3]
-            analisis_historico["ultimo_analisis"] = datetime.now().strftime("%Y-%m-%d %H:%M")
-            guardar_analisis_historico(analisis_historico)
-    else:
-        print(f"🤖 Consultando OpenAI para {len(coches_nuevos)} coches nuevos...")
-        
-        try:
-            # Analizar solo los coches nuevos
-            analisis_nuevos = analizar_coches_para_renting(coches_nuevos)
-            
-            # Combinar con análisis previo
-            analisis_final = combinar_con_analisis_previo(analisis_nuevos, analisis_historico, coches_lista)
-            
-            # Guardar análisis histórico actualizado
-            guardar_analisis_historico(analisis_historico)
-            
-            print(f"✅ Análisis actualizado con {len(coches_nuevos)} coches nuevos")
-            
-        except Exception as e:
-            print(f"❌ Error generando análisis para coches nuevos: {e}")
-            exit(1)
-    
-    # Guardar análisis final
-    try:
-        out_file = os.path.join(DATA_DIR, "analisis_rentabilidad.txt")
-        
-        with open(out_file, "w", encoding="utf-8") as f:
-            f.write(analisis_final)
-        
-        print(f"\n📈 Análisis guardado en: {out_file}")
-        print(f"💰 Mostrando TOP 3 actual:")
-        
-        # Mostrar solo el TOP 3 en consola para ahorrar espacio
-        lineas = analisis_final.split('\n')
-        en_top3 = False
-        for linea in lineas:
-            if "TOP 3 RECOMENDADOS:" in linea:
-                en_top3 = True
-                print(f"\n{linea}")
-            elif en_top3 and "RECOMENDACIÓN FINAL:" in linea:
-                print(f"\n{linea}")
-                en_top3 = False
-            elif en_top3:
-                print(linea)
-            elif "RECOMENDACIÓN FINAL:" in linea:
-                break
-        
-        # Mostrar estadísticas detalladas
-        total_analizados = len(analisis_historico.get("coches_analizados", {}))
-        coches_sin_cambios = len([c for c in coches_lista if c.get("estado_actualizacion") == "sin_cambios"])
-        coches_evitados = len(coches_lista) - len(coches_nuevos)
-        
-        print(f"\n📊 Estadísticas de Optimización:")
-        print(f"   🆕 Coches nuevos analizados: {len(coches_nuevos)}")
-        print(f"   📋 Total en base de datos: {total_analizados}")
-        print(f"   ✅ Coches sin cambios: {coches_sin_cambios}")
-        print(f"   💸 Consultas OpenAI ahorradas: {coches_evitados}")
-        if len(coches_lista) > 0:
-            porcentaje_ahorro = (coches_evitados / len(coches_lista)) * 100
-            print(f"   📈 Porcentaje de ahorro: {porcentaje_ahorro:.1f}%")
-        
-    except Exception as e:
-        print(f"❌ Error guardando análisis: {e}")
+    print("💾 Guardando coches nuevos ponderados...")
+    with open(ARCHIVO_ANALISIS.split('.')[0] + "_coches_nuevos_ponderados.json", "w", encoding="utf-8") as f:
+        f.write(json.dumps(coches_nuevos_ponderados, ensure_ascii=False, indent=2))
+
+    coches_ponderados = []
+    coches_ponderados_anteriormente = list(cargar_coches(ARCHIVO_ANALISIS.split('.')[0] + "_coches_ponderados.json"))
+
+    # Guardar los datos completos del coche que estén en coches_nuevos_ponderados o coches_ponderados_anteriormente
+    for coche in coches:
+        url = coche.get("url")
+        # Buscar primero en los nuevos ponderados
+        coche_nuevo = next((c for c in coches_nuevos_ponderados if c.get("url") == url), None)
+        if coche_nuevo:
+            coches_ponderados.append(coche_nuevo)
+            continue
+        # Si no está, buscar en los ponderados anteriores
+        coche_ant = next((c for c in coches_ponderados_anteriormente if c.get("url") == url), None)
+        if coche_ant:
+            coches_ponderados.append(coche_ant)
+
+    with open(ARCHIVO_ANALISIS.split('.')[0] + "_coches_ponderados.json", "w", encoding="utf-8") as f:
+        f.write(json.dumps(coches_ponderados, ensure_ascii=False, indent=2))
+
+    print("📝 Generando informe final...")
+    informe = crear_informe(coches_ponderados)
+
+    print("💾 Guardando informe en TXT...")
+    with open(ARCHIVO_ANALISIS.split('.')[0] + "_informe.txt", "w", encoding="utf-8") as f:
+        f.write(informe)
+
+    print("🎉 Proceso completado. ¡Consulta los archivos generados en la carpeta data! 🚀")

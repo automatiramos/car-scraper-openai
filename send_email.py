@@ -21,35 +21,13 @@ GMAIL_USER = os.getenv("GMAIL_USER")  # tu_email@gmail.com
 GMAIL_PASSWORD = os.getenv("GMAIL_PASSWORD")  # contraseña de aplicación
 DESTINATARIO = os.getenv("EMAIL_DESTINATARIO", GMAIL_USER)  # destinatario por defecto
 
-def buscar_ultimo_analisis():
+
+def buscar_analisis():
     """
-    Busca el archivo de análisis (nombre fijo).
+    Busca el archivo de analisis que se llama analisis_informe.txt y que esta en data
     """
-    # Buscar en el directorio de datos primero
-    data_dir = os.path.join(os.getcwd(), "data")
-    archivo_data = os.path.join(data_dir, "analisis_rentabilidad.txt")
-    
-    if os.path.exists(archivo_data):
-        return archivo_data
-    
-    # Si no existe en data/, buscar en el directorio actual
-    archivo_actual = "analisis_rentabilidad.txt"
-    if os.path.exists(archivo_actual):
-        return archivo_actual
-    
-    # Buscar archivos con fecha como fallback (compatibilidad hacia atrás)
-    patron_data = os.path.join(data_dir, "analisis_rentabilidad_*.txt")
-    archivos = glob.glob(patron_data)
-    
-    if not archivos:
-        archivos = glob.glob("analisis_rentabilidad_*.txt")
-    
-    if archivos:
-        # Ordenar por fecha de modificación (más reciente primero)
-        archivos.sort(key=os.path.getmtime, reverse=True)
-        return archivos[0]
-    
-    return None
+    archivo = 'data/analisis_informe.txt'
+    return archivo if os.path.exists(archivo) else None
 
 def leer_contenido_analisis(archivo):
     """
@@ -73,13 +51,10 @@ def crear_mensaje_email(contenido_analisis, archivo_analisis):
     msg['Subject'] = f"🚗 Análisis Rentabilidad Coches Renting - {datetime.now().strftime('%d/%m/%Y-%H:%M')}"
 
     # Encabezado del email
-    encabezado = f"""📧 ANÁLISIS DE RENTABILIDAD - COCHES RENTING
+    encabezado = f"""
 ═══════════════════════════════════════════════════════════════════
 
-
 📅 Generado: {datetime.now().strftime('%d/%m/%Y a las %H:%M')}
-📍 Ubicación: Madrid
-🎯 Objetivo: Renting + Subalquiler P2P en Amovens
 
 ═══════════════════════════════════════════════════════════════════
 
@@ -91,7 +66,7 @@ def crear_mensaje_email(contenido_analisis, archivo_analisis):
 🤖 Generado automáticamente por el Sistema de Análisis de Rentabilidad
 
 Saludos,
-Sistema de Análisis Automático de Automatiramos
+Automatiramos
 """
     
     # Combinar todo el contenido
@@ -145,18 +120,12 @@ def main():
         print("   GMAIL_PASSWORD=tu_contraseña_de_aplicacion")
         print("   EMAIL_DESTINATARIO=destinatario@email.com (opcional)")
         return
-    
-    # Buscar archivo de análisis más reciente
-    archivo_analisis = buscar_ultimo_analisis()
-    if not archivo_analisis:
-        print("❌ No se encontró ningún archivo de análisis (analisis_rentabilidad_*.txt)")
-        print("💡 Ejecuta primero el script ask_openai_car_evaluation.py")
-        return
-    
-    print(f"📄 Archivo encontrado: {archivo_analisis}")
-    
+
+    archivo_analisis = buscar_analisis()
+
     # Leer contenido
     contenido = leer_contenido_analisis(archivo_analisis)
+    
     if not contenido:
         return
     
