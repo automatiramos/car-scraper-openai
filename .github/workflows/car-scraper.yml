@@ -70,10 +70,3 @@ jobs:
           GMAIL_PASSWORD: ${{ secrets.GMAIL_PASSWORD }}
           EMAIL_DESTINATARIO: josselynmishellramosacaro@gmail.com
         run: python send_email.py
-
-      - name: Save car data as artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: car-data
-          path: ./data/*
-          retention-days: 1
