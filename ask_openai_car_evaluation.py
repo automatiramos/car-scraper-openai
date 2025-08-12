@@ -132,19 +132,29 @@ Coches:
 def cargar_coches(path: str):
     """Generador de dicts coche desde JSON o JSONL."""
     if not path or not os.path.exists(path):
-        raise FileNotFoundError(f"No se encontró ARCHIVO_COCHES: {path}")
+        # En vez de lanzar excepción, devolver lista vacía
+        print(f"[AVISO] No se encontró archivo: {path}. Se devuelve lista vacía.")
+        return []
+
+    coches = []
     with open(path, "r", encoding="utf-8") as f:
         primero = f.read(1)
         f.seek(0)
         if primero == "[":
-            for coche in json.load(f):
-                yield coche
+            coches = json.load(f)
         else:
             for line in f:
                 line = line.strip()
                 if not line:
                     continue
-                yield json.loads(line)
+                coches.append(json.loads(line))
+
+    if not coches:
+        return []
+
+    return coches
+
+
 
 def analizar_coches_para_renting(lista_coches: List[Dict]) -> str:
     """
@@ -259,17 +269,37 @@ def crear_informe(coches: List[Dict]) -> str:
     informe += "\n✅ -- Fin del informe -- ✅\n"
     return informe
 
-# 1) ------------- Análisis de coches para renting -----------------------
-if __name__ == "__main__":
-    print("🚗 Cargando lista de coches...")
-    coches = list(cargar_coches(FICHERO_ENTRADA))
-    print(f"✅ Lista de coches cargada: {len(coches)} coches encontrados.")
 
-    # Solo se analizan los coches nuevos. Los coches con estado 'sin_cambios' ya han sido analizados previamente
-    # y están en la lista de coches ponderados, por lo que no se vuelven a enviar a OpenAI ni a recalcular.
+# 1) ------------- Análisis de coches para renting -----------------------
+def main():
+    print("\n========== INICIO DEL ANÁLISIS DE COCHES ==========")
+    print("🚗 Cargando lista de coches...")
+    coches = cargar_coches(FICHERO_ENTRADA)
+    print(f"✅ Lista de coches cargada: {len(coches)} coches encontrados.")
+    coches_ponderados_anteriormente = cargar_coches(ARCHIVO_ANALISIS.split('.')[0] + "_coches_ponderados.json")
+
     print("🆕 Filtrando coches nuevos...")
     coches_nuevos = [coche for coche in coches if coche.get("estado_actualizacion") == "nuevo"]
     print(f"✅ Lista de coches nuevos: {len(coches_nuevos)} coches encontrados.")
+
+    if not coches_nuevos:
+        print("⚠️ No se encontraron coches nuevos para analizar. Se usará el histórico.")
+        coches_ponderados = []
+        for coche in coches:
+            url = coche.get("url")
+            coche_ant = next((c for c in coches_ponderados_anteriormente if c.get("url") == url), None)
+            if coche_ant:
+                coches_ponderados.append(coche_ant)
+        print(f"💾 Guardando {len(coches_ponderados)} coches ponderados (histórico)...")
+        with open(ARCHIVO_ANALISIS.split('.')[0] + "_coches_ponderados.json", "w", encoding="utf-8") as f:
+            f.write(json.dumps(coches_ponderados, ensure_ascii=False, indent=2))
+        print("📝 Generando informe final...")
+        informe = crear_informe(coches_ponderados)
+        print("💾 Guardando informe en TXT...")
+        with open(ARCHIVO_ANALISIS.split('.')[0] + "_informe.txt", "w", encoding="utf-8") as f:
+            f.write(informe)
+        print("🎉 Proceso completado solo con histórico. ¡Consulta los archivos generados en la carpeta data! 🚀")
+        return
 
     print("🤖 Enviando coches nuevos a OpenAI para análisis...")
     analisis_coches_nuevos = analizar_coches_para_renting(coches_nuevos)
@@ -289,8 +319,7 @@ if __name__ == "__main__":
                     coche.update(analisis)
                     coches_nuevos_actualizados.append(coche)
                     break
-
-    print("💾 Guardando coches actualizados...")
+    print(f"💾 Guardando {len(coches_nuevos_actualizados)} coches nuevos actualizados...")
     with open(ARCHIVO_ANALISIS.split('.')[0] + "_coches_nuevos_actualizados.json", "w", encoding="utf-8") as f:
         f.write(json.dumps(coches_nuevos_actualizados, ensure_ascii=False, indent=2))
 
@@ -298,27 +327,23 @@ if __name__ == "__main__":
     coches_nuevos_ponderados = ponderar_coches(coches_nuevos_actualizados)
     print(f"✅ Coches nuevos ponderados: {len(coches_nuevos_ponderados)} coches.")
 
-    
     print("💾 Guardando coches nuevos ponderados...")
     with open(ARCHIVO_ANALISIS.split('.')[0] + "_coches_nuevos_ponderados.json", "w", encoding="utf-8") as f:
         f.write(json.dumps(coches_nuevos_ponderados, ensure_ascii=False, indent=2))
 
     coches_ponderados = []
-    coches_ponderados_anteriormente = list(cargar_coches(ARCHIVO_ANALISIS.split('.')[0] + "_coches_ponderados.json"))
-
-    # Guardar los datos completos del coche que estén en coches_nuevos_ponderados o coches_ponderados_anteriormente
+    print("🔗 Fusionando coches nuevos ponderados con históricos...")
     for coche in coches:
         url = coche.get("url")
-        # Buscar primero en los nuevos ponderados
         coche_nuevo = next((c for c in coches_nuevos_ponderados if c.get("url") == url), None)
         if coche_nuevo:
             coches_ponderados.append(coche_nuevo)
             continue
-        # Si no está, buscar en los ponderados anteriores
         coche_ant = next((c for c in coches_ponderados_anteriormente if c.get("url") == url), None)
         if coche_ant:
             coches_ponderados.append(coche_ant)
 
+    print(f"💾 Guardando {len(coches_ponderados)} coches ponderados (total)...")
     with open(ARCHIVO_ANALISIS.split('.')[0] + "_coches_ponderados.json", "w", encoding="utf-8") as f:
         f.write(json.dumps(coches_ponderados, ensure_ascii=False, indent=2))
 
@@ -330,3 +355,7 @@ if __name__ == "__main__":
         f.write(informe)
 
     print("🎉 Proceso completado. ¡Consulta los archivos generados en la carpeta data! 🚀")
+
+
+if __name__ == "__main__":
+    main()
